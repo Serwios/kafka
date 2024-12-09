@@ -159,7 +159,7 @@ public class RangeAssignor extends AbstractPartitionAssignor {
             List<TopicPartition> assignablePartitions = assignmentState.unassignedPartitions.stream()
                     .filter(tp -> mayAssign.apply(consumer, tp))
                     .limit(assignmentState.maxAssignable(consumer))
-                    .toList();
+                    .collect(Collectors.toList());
             if (assignablePartitions.isEmpty())
                 continue;
 
