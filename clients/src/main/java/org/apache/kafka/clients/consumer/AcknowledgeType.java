@@ -43,7 +43,7 @@ public enum AcknowledgeType {
     }
 
 
-     public static AcknowledgeType forId(byte id) {
+    public static AcknowledgeType forId(byte id) {
         switch (id) {
             case 1:
                 return ACCEPT;
@@ -53,5 +53,6 @@ public enum AcknowledgeType {
                 return REJECT;
             default:
                 throw new IllegalArgumentException("Unknown acknowledge type id: " + id);
+        }
     }
 }
