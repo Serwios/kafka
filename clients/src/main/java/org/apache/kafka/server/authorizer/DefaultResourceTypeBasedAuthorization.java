@@ -9,7 +9,12 @@ import org.apache.kafka.common.resource.ResourceType;
 import org.apache.kafka.common.security.auth.KafkaPrincipal;
 import org.apache.kafka.common.utils.SecurityUtils;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 
 public class DefaultResourceTypeBasedAuthorization {
     private DefaultResourceTypeBasedAuthorization() {}
@@ -84,9 +89,15 @@ public class DefaultResourceTypeBasedAuthorization {
     }
 
     private static boolean isValidBinding(AclBinding binding, KafkaPrincipal principal, String hostAddr, AclOperation op) {
-        return (binding.entry().host().equals(hostAddr) || binding.entry().host().equals("*"))
-                && (SecurityUtils.parseKafkaPrincipal(binding.entry().principal()).equals(principal) || binding.entry().principal().equals("User:*"))
-                && (binding.entry().operation() == op || binding.entry().operation() == AclOperation.ALL);
+        String bindingHost = binding.entry().host();
+        String bindingPrincipal = binding.entry().principal();
+        AclOperation bindingOperation = binding.entry().operation();
+
+        boolean isHostValid = bindingHost.equals(hostAddr) || bindingHost.equals("*");
+        boolean isPrincipalValid = SecurityUtils.parseKafkaPrincipal(bindingPrincipal).equals(principal) || bindingPrincipal.equals("User:*");
+        boolean isOperationValid = bindingOperation == op || bindingOperation == AclOperation.ALL;
+
+        return isHostValid && isPrincipalValid && isOperationValid;
     }
 
     private static void processDenyAcl(AclBinding binding, Map<PatternType, Set<String>> denyPatterns) {
