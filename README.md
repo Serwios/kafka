@@ -1,5 +1,7 @@
 Apache Kafka
 =================
+![Apache-Kafka_logo_16_9](https://github.com/user-attachments/assets/af9cbe9c-0e51-4a45-90aa-673ba7bd3a46)
+
 See our [web site](https://kafka.apache.org) for details on the project.
 
 You need to have [Java](http://www.oracle.com/technetwork/java/javase/downloads/index.html) installed.
