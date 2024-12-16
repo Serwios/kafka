@@ -577,8 +577,7 @@ public final class Utils {
      *
      * @param bytes the size in bytes
      * @return a string representing the size with the appropriate unit (e.g., "3.2 KB", "1.5 MB").
-     *         If the value is negative, the input is returned as a string (e.g., "-500").
-     *         If the number is too large for the predefined units, the raw byte value is returned.
+     *         If the value is negative or too large, the input is returned as a string (e.g., "-500", "999999999999999").
      */
     public static String formatBytes(long bytes) {
         if (bytes < 0) {
@@ -894,7 +893,7 @@ public final class Utils {
     /**
      * Returns an empty list if the provided list is null, otherwise returns the list itself.
      * <p>
-     * This method is useful for avoiding `NullPointerException` when working with potentially null lists.
+     * This method is useful for avoiding {@code NullPointerException} when working with potentially null lists.
      *
      * @param other the list to check for null
      * @return an empty list if the provided list is null, otherwise the original list
