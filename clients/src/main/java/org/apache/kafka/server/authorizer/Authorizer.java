@@ -112,7 +112,8 @@ public interface Authorizer extends Configurable, Closeable {
      * to process the update synchronously on the request thread.
      *
      * @param requestContext Request context if the ACL is being created by a broker to handle
-     *        a client request to create ACLs.
+     *        a client request to create ACLs. This may be null if ACLs are created directly in ZooKeeper
+     *        using AclCommand.
      * @param aclBindings ACL bindings to create
      *
      * @return Create result for each ACL binding in the same order as in the input list. Each result
@@ -130,7 +131,8 @@ public interface Authorizer extends Configurable, Closeable {
      * Refer to the authorizer implementation docs for details on concurrent update guarantees.
      *
      * @param requestContext Request context if the ACL is being deleted by a broker to handle
-     *        a client request to delete ACLs.
+     *        a client request to delete ACLs. This may be null if ACLs are deleted directly in ZooKeeper
+     *        using AclCommand.
      * @param aclBindingFilters Filters to match ACL bindings that are to be deleted
      *
      * @return Delete result for each filter in the same order as in the input list.
@@ -196,14 +198,14 @@ public interface Authorizer extends Configurable, Closeable {
 
         EnumMap<PatternType, Set<String>> denyPatterns =
             new EnumMap<>(PatternType.class) {{
-                put(PatternType.LITERAL, new HashSet<>());
-                put(PatternType.PREFIXED, new HashSet<>());
-            }};
+                    put(PatternType.LITERAL, new HashSet<>());
+                    put(PatternType.PREFIXED, new HashSet<>());
+                }};
         EnumMap<PatternType, Set<String>> allowPatterns =
             new EnumMap<>(PatternType.class) {{
-                put(PatternType.LITERAL, new HashSet<>());
-                put(PatternType.PREFIXED, new HashSet<>());
-            }};
+                    put(PatternType.LITERAL, new HashSet<>());
+                    put(PatternType.PREFIXED, new HashSet<>());
+                }};
 
 
         KafkaPrincipal principal = new KafkaPrincipal(
@@ -244,7 +246,6 @@ public interface Authorizer extends Configurable, Closeable {
                 if (entry.getKey() == PatternType.LITERAL && denyPatterns.get(PatternType.LITERAL).contains(allowStr)) {
                     continue;
                 }
-
                 StringBuilder sb = new StringBuilder();
                 boolean hasDominatedDeny = false;
                 for (char ch : allowStr.toCharArray()) {
@@ -254,9 +255,8 @@ public interface Authorizer extends Configurable, Closeable {
                         break;
                     }
                 }
-                if (!hasDominatedDeny) {
+                if (!hasDominatedDeny)
                     return AuthorizationResult.ALLOWED;
-                }
             }
         }
 
