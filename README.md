@@ -1,13 +1,15 @@
 Apache Kafka
 =================
+
+[![CI](https://github.com/apache/kafka/actions/workflows/ci.yml/badge.svg?branch=trunk&event=push)](https://github.com/apache/kafka/actions/workflows/ci.yml?query=event%3Apush+branch%3Atrunk)
+[![Flaky Test Report](https://github.com/apache/kafka/actions/workflows/generate-reports.yml/badge.svg?branch=trunk&event=schedule)](https://github.com/apache/kafka/actions/workflows/generate-reports.yml?query=event%3Aschedule+branch%3Atrunk)
+
 See our [web site](https://kafka.apache.org) for details on the project.
 
 You need to have [Java](http://www.oracle.com/technetwork/java/javase/downloads/index.html) installed.
 
-We build and test Apache Kafka with 11, 17 and 21. We set the `release` parameter in javac and scalac
-to `11` to ensure the generated binaries are compatible with Java 11 or higher (independently of the Java version
-used for compilation). Java 11 support for the broker and tools has been deprecated since Apache Kafka 3.7 and removal 
-of both is planned for Apache Kafka 4.0.([KIP-1013](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=284789510) for more details).
+We build and test Apache Kafka with 17 and 23. The `release` parameter in javac and scalac is set to `11` for the clients 
+and streams modules, and `17` for the broker and tools, ensuring compatibility with their respective minimum Java versions. 
 
 Scala 2.13 is the only supported version in Apache Kafka.
 
@@ -52,10 +54,10 @@ Follow instructions in https://kafka.apache.org/quickstart
     ./gradlew clients:test --tests org.apache.kafka.clients.MetadataTest.testTimeToNextUpdate
 
 ### Running a particular unit/integration test with log4j output ###
-By default, there will be only small number of logs output while testing. You can adjust it by changing the `log4j.properties` file in the module's `src/test/resources` directory.
+By default, there will be only small number of logs output while testing. You can adjust it by changing the `log4j2.yml` file in the module's `src/test/resources` directory.
 
-For example, if you want to see more logs for clients project tests, you can modify [the line](https://github.com/apache/kafka/blob/trunk/clients/src/test/resources/log4j.properties#L21) in `clients/src/test/resources/log4j.properties` 
-to `log4j.logger.org.apache.kafka=INFO` and then run:
+For example, if you want to see more logs for clients project tests, you can modify [the line](https://github.com/apache/kafka/blob/trunk/clients/src/test/resources/log4j2.yml#L35) in `clients/src/test/resources/log4j2.yml` 
+to `level: INFO` and then run:
     
     ./gradlew cleanTest clients:test --tests NetworkClientTest   
 
@@ -99,7 +101,7 @@ fail due to code changes. You can just run:
 Using compiled files:
 
     KAFKA_CLUSTER_ID="$(./bin/kafka-storage.sh random-uuid)"
-    ./bin/kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c config/kraft/reconfig-server.properties
+    ./bin/kafka-storage.sh format --standalone -t $KAFKA_CLUSTER_ID -c config/kraft/reconfig-server.properties
     ./bin/kafka-server-start.sh config/kraft/reconfig-server.properties
 
 Using docker image:
@@ -123,6 +125,8 @@ Streams has multiple sub-projects, but you can run all the tests:
     ./gradlew tasks
 
 ### Building IDE project ####
+*Note Please ensure that JDK17 is used when developing Kafka.*
+
 *Note that this is not strictly necessary (IntelliJ IDEA has good built-in support for Gradle projects, for example).*
 
     ./gradlew eclipse
@@ -131,6 +135,11 @@ Streams has multiple sub-projects, but you can run all the tests:
 The `eclipse` task has been configured to use `${project_dir}/build_eclipse` as Eclipse's build directory. Eclipse's default
 build directory (`${project_dir}/bin`) clashes with Kafka's scripts directory and we don't use Gradle's build directory
 to avoid known issues with this configuration.
+
+IntelliJ Language Level awareness:
+
+IntelliJ will automatically check Java syntax and compatibility for each module, even if the Java version is not 
+explicitly set in the Structure > Project Settings > Modules.
 
 ### Publishing the streams quickstart archetype artifact to maven ###
 For the Streams archetype project, one cannot use gradle to upload to maven; instead the `mvn deploy` command needs to be called at the quickstart folder:
@@ -179,6 +188,7 @@ You can run checkstyle using:
 
 The checkstyle warnings will be found in `reports/checkstyle/reports/main.html` and `reports/checkstyle/reports/test.html` files in the
 subproject build directories. They are also printed to the console. The build will fail if Checkstyle fails.
+For experiments (or regression testing purposes) add `-PcheckstyleVersion=X.y.z` switch (to override project-defined checkstyle version).
 
 #### Spotless ####
 The import order is a part of static check. please call `spotlessApply` to optimize the imports of Java codes before filing pull request.

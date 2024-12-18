@@ -234,6 +234,8 @@ import org.apache.kafka.common.message.ShareGroupHeartbeatResponseData;
 import org.apache.kafka.common.message.StopReplicaRequestData.StopReplicaPartitionState;
 import org.apache.kafka.common.message.StopReplicaRequestData.StopReplicaTopicState;
 import org.apache.kafka.common.message.StopReplicaResponseData;
+import org.apache.kafka.common.message.StreamsGroupHeartbeatRequestData;
+import org.apache.kafka.common.message.StreamsGroupHeartbeatResponseData;
 import org.apache.kafka.common.message.SyncGroupRequestData;
 import org.apache.kafka.common.message.SyncGroupRequestData.SyncGroupRequestAssignment;
 import org.apache.kafka.common.message.SyncGroupResponseData;
@@ -488,7 +490,8 @@ public class RequestResponseTest {
                                 .iterator()))
                         .setAcks((short) 1)
                         .setTimeoutMs(5000)
-                        .setTransactionalId("transactionalId"))
+                        .setTransactionalId("transactionalId"),
+                true)
             .build((short) 3);
         assertEquals(2, request.partitionSizes().size());
         assertEquals(records0.sizeInBytes(), (int) request.partitionSizes().get(tp0));
@@ -1123,6 +1126,7 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateRequest(version);
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateRequest(version);
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryRequest(version);
+            case STREAMS_GROUP_HEARTBEAT: return createStreamsGroupHeartbeatRequest(version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -1181,7 +1185,7 @@ public class RequestResponseTest {
             case ALTER_CLIENT_QUOTAS: return createAlterClientQuotasResponse();
             case DESCRIBE_USER_SCRAM_CREDENTIALS: return createDescribeUserScramCredentialsResponse();
             case ALTER_USER_SCRAM_CREDENTIALS: return createAlterUserScramCredentialsResponse();
-            case VOTE: return createVoteResponse();
+            case VOTE: return createVoteResponse(version);
             case BEGIN_QUORUM_EPOCH: return createBeginQuorumEpochResponse();
             case END_QUORUM_EPOCH: return createEndQuorumEpochResponse();
             case DESCRIBE_QUORUM: return createDescribeQuorumResponse();
@@ -1217,6 +1221,7 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateResponse();
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateResponse();
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryResponse();
+            case STREAMS_GROUP_HEARTBEAT: return createStreamsGroupHeartbeatResponse();
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -1700,29 +1705,34 @@ public class RequestResponseTest {
     }
 
     private VoteRequest createVoteRequest(short version) {
+        VoteRequestData.PartitionData partitionData = new VoteRequestData.PartitionData()
+            .setPartitionIndex(0)
+            .setReplicaEpoch(1)
+            .setReplicaId(2)
+            .setLastOffset(3L)
+            .setLastOffsetEpoch(4);
+        if (version >= 2) {
+            partitionData.setPreVote(true);
+        }
         VoteRequestData data = new VoteRequestData()
                 .setClusterId("clusterId")
                 .setTopics(singletonList(new VoteRequestData.TopicData()
-                        .setPartitions(singletonList(new VoteRequestData.PartitionData()
-                                .setPartitionIndex(0)
-                                .setCandidateEpoch(1)
-                                .setCandidateId(2)
-                                .setLastOffset(3L)
-                                .setLastOffsetEpoch(4)))
+                        .setPartitions(singletonList(partitionData))
                         .setTopicName("topic1")));
         return new VoteRequest.Builder(data).build(version);
     }
 
-    private VoteResponse createVoteResponse() {
+    private VoteResponse createVoteResponse(short version) {
+        VoteResponseData.PartitionData partitionData = new VoteResponseData.PartitionData()
+            .setErrorCode(Errors.NONE.code())
+            .setLeaderEpoch(0)
+            .setPartitionIndex(1)
+            .setLeaderId(2)
+            .setVoteGranted(false);
         VoteResponseData data = new VoteResponseData()
                 .setErrorCode(Errors.NONE.code())
                 .setTopics(singletonList(new VoteResponseData.TopicData()
-                        .setPartitions(singletonList(new VoteResponseData.PartitionData()
-                                .setErrorCode(Errors.NONE.code())
-                                .setLeaderEpoch(0)
-                                .setPartitionIndex(1)
-                                .setLeaderId(2)
-                                .setVoteGranted(false)))));
+                        .setPartitions(singletonList(partitionData))));
         return new VoteResponse(data);
     }
 
@@ -2187,9 +2197,9 @@ public class RequestResponseTest {
         JoinGroupRequestData.JoinGroupRequestProtocolCollection protocols =
             new JoinGroupRequestData.JoinGroupRequestProtocolCollection(
                 Collections.singleton(
-                new JoinGroupRequestData.JoinGroupRequestProtocol()
-                        .setName("consumer-range")
-                        .setMetadata(new byte[0])).iterator()
+                        new JoinGroupRequestData.JoinGroupRequestProtocol()
+                                .setName("consumer-range")
+                                .setMetadata(new byte[0])).iterator()
         );
 
         JoinGroupRequestData data = new JoinGroupRequestData()
@@ -2583,7 +2593,8 @@ public class RequestResponseTest {
                                                 .setRecords(records)))).iterator()))
                         .setAcks((short) 1)
                         .setTimeoutMs(5000)
-                        .setTransactionalId(version >= 3 ? "transactionalId" : null))
+                        .setTransactionalId(version >= 3 ? "transactionalId" : null),
+                true)
                 .build(version);
     }
 
@@ -3108,7 +3119,18 @@ public class RequestResponseTest {
                 "groupId",
                 21L,
                 (short) 42,
-                offsets).build();
+                offsets,
+                false).build();
+        } else if (version < 5) {
+            return new TxnOffsetCommitRequest.Builder("transactionalId",
+                "groupId",
+                21L,
+                (short) 42,
+                offsets,
+                "member",
+                2,
+                Optional.of("instance"),
+                false).build(version);
         } else {
             return new TxnOffsetCommitRequest.Builder("transactionalId",
                 "groupId",
@@ -3117,7 +3139,8 @@ public class RequestResponseTest {
                 offsets,
                 "member",
                 2,
-                Optional.of("instance")).build(version);
+                Optional.of("instance"),
+                true).build(version);
         }
     }
 
@@ -3135,7 +3158,8 @@ public class RequestResponseTest {
             offsets,
             "member",
             2,
-            Optional.of("instance")).build();
+            Optional.of("instance"),
+            false).build();
     }
 
     private TxnOffsetCommitResponse createTxnOffsetCommitResponse() {
@@ -4013,6 +4037,14 @@ public class RequestResponseTest {
                                 .setStartOffset(0)
                                 .setStateEpoch(0)))));
         return new ReadShareGroupStateSummaryResponse(data);
+    }
+
+    private AbstractRequest createStreamsGroupHeartbeatRequest(final short version) {
+        return new StreamsGroupHeartbeatRequest.Builder(new StreamsGroupHeartbeatRequestData()).build(version);
+    }
+
+    private AbstractResponse createStreamsGroupHeartbeatResponse() {
+        return new StreamsGroupHeartbeatResponse(new StreamsGroupHeartbeatResponseData());
     }
 
     @Test

@@ -441,7 +441,7 @@ public class SubscriptionState {
             log.debug("Skipping reset of partition {} since it is no longer assigned", tp);
         } else if (!state.awaitingReset()) {
             log.debug("Skipping reset of partition {} since reset is no longer needed", tp);
-        } else if (requestedResetStrategy != state.resetStrategy) {
+        } else if (requestedResetStrategy != null && !requestedResetStrategy.equals(state.resetStrategy)) {
             log.debug("Skipping reset of partition {} since an alternative reset has been requested", tp);
         } else {
             log.info("Resetting offset for partition {} to position {}.", tp, position);
@@ -898,8 +898,8 @@ public class SubscriptionState {
     }
 
     /**
-     * Enable fetching and updating positions for the given partitions that were added to the
-     * assignment, but waiting for the onPartitionsAssigned callback to complete. This is
+     * Enable fetching and updating positions for the given partitions that were assigned to the
+     * consumer, but waiting for the onPartitionsAssigned callback to complete. This is
      * expected to be used by the async consumer.
      */
     public synchronized void enablePartitionsAwaitingCallback(Collection<TopicPartition> partitions) {
