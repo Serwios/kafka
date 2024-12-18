@@ -19,21 +19,32 @@ package org.apache.kafka.server.authorizer;
 
 import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.Endpoint;
+import org.apache.kafka.common.acl.AccessControlEntryFilter;
 import org.apache.kafka.common.acl.AclBinding;
 import org.apache.kafka.common.acl.AclBindingFilter;
 import org.apache.kafka.common.acl.AclOperation;
+import org.apache.kafka.common.acl.AclPermissionType;
 import org.apache.kafka.common.annotation.InterfaceStability;
+import org.apache.kafka.common.resource.PatternType;
+import org.apache.kafka.common.resource.ResourcePattern;
+import org.apache.kafka.common.resource.ResourcePatternFilter;
 import org.apache.kafka.common.resource.ResourceType;
+import org.apache.kafka.common.security.auth.KafkaPrincipal;
+import org.apache.kafka.common.utils.SecurityUtils;
 
 import java.io.Closeable;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletionStage;
 
 /**
  *
  * Pluggable authorizer interface for Kafka brokers.
- *
+ * <p>
  * Startup sequence in brokers:
  * <ol>
  *   <li>Broker creates authorizer instance if configured in `authorizer.class.name`.</li>
@@ -153,7 +164,7 @@ public interface Authorizer extends Configurable, Closeable {
     /**
      * Check if the caller is authorized to perform the given ACL operation on at least one
      * resource of the given type.
-     *
+     * <p>
      * Custom authorizer implementations should consider overriding this default implementation because:
      * 1. The default implementation iterates all AclBindings multiple times, without any caching
      *    by principal, host, operation, permission types, and resource types. More efficient
@@ -171,6 +182,93 @@ public interface Authorizer extends Configurable, Closeable {
      *                       given type. Return {@link AuthorizationResult#DENIED} otherwise.
      */
     default AuthorizationResult authorizeByResourceType(AuthorizableRequestContext requestContext, AclOperation op, ResourceType resourceType) {
-        return DefaultResourceTypeBasedAuthorization.authorize(requestContext, op, resourceType, this);
+        SecurityUtils.authorizeByResourceTypeCheckArgs(op, resourceType);
+
+        // Check a hard-coded name to ensure that super users are granted
+        // access regardless of DENY ACLs.
+        Action action = new Action(op, new ResourcePattern(resourceType, "hardcode", PatternType.LITERAL), 0, true, false);
+        if (authorize(requestContext, Collections.singletonList(action)).get(0) == AuthorizationResult.ALLOWED) {
+            return AuthorizationResult.ALLOWED;
+        }
+
+        // Filter out all the resource pattern corresponding to the RequestContext,
+        // AclOperation, and ResourceType
+        ResourcePatternFilter resourceTypeFilter = new ResourcePatternFilter(resourceType, null, PatternType.ANY);
+        AclBindingFilter aclFilter = new AclBindingFilter(resourceTypeFilter, AccessControlEntryFilter.ANY);
+
+        EnumMap<PatternType, Set<String>> denyPatterns =
+            new EnumMap<>(PatternType.class) {{
+                put(PatternType.LITERAL, new HashSet<>());
+                put(PatternType.PREFIXED, new HashSet<>());
+            }};
+        EnumMap<PatternType, Set<String>> allowPatterns =
+            new EnumMap<>(PatternType.class) {{
+                put(PatternType.LITERAL, new HashSet<>());
+                put(PatternType.PREFIXED, new HashSet<>());
+            }};
+
+
+        KafkaPrincipal principal = new KafkaPrincipal(
+            requestContext.principal().getPrincipalType(),
+            requestContext.principal().getName());
+        String hostAddr = requestContext.clientAddress().getHostAddress();
+
+        boolean hasWildCardAllow = false;
+        for (AclBinding binding : acls(aclFilter)) {
+            if (shouldSkipBinding(binding, hostAddr, principal, op)) continue;
+
+            AclPermissionType permissionType = binding.entry().permissionType();
+            PatternType patternType = binding.pattern().patternType();
+            String patternName = binding.pattern().name();
+
+            if (permissionType == AclPermissionType.DENY) {
+                if (patternName.equals(ResourcePattern.WILDCARD_RESOURCE)) {
+                    return AuthorizationResult.DENIED;
+                }
+                denyPatterns.get(patternType).add(patternName);
+            } else if (permissionType == AclPermissionType.ALLOW) {
+                if (patternName.equals(ResourcePattern.WILDCARD_RESOURCE)) {
+                    hasWildCardAllow = true;
+                } else {
+                    allowPatterns.get(patternType).add(patternName);
+                }
+            }
+        }
+
+        if (hasWildCardAllow) {
+            return AuthorizationResult.ALLOWED;
+        }
+
+        // For any literal allowed, if there's no dominant literal and prefix denied, return allow.
+        // For any prefix allowed, if there's no dominant prefix denied, return allow.
+        for (Map.Entry<PatternType, Set<String>> entry : allowPatterns.entrySet()) {
+            for (String allowStr : entry.getValue()) {
+                if (entry.getKey() == PatternType.LITERAL && denyPatterns.get(PatternType.LITERAL).contains(allowStr)) {
+                    continue;
+                }
+
+                StringBuilder sb = new StringBuilder();
+                boolean hasDominatedDeny = false;
+                for (char ch : allowStr.toCharArray()) {
+                    sb.append(ch);
+                    if (denyPatterns.get(PatternType.PREFIXED).contains(sb.toString())) {
+                        hasDominatedDeny = true;
+                        break;
+                    }
+                }
+                if (!hasDominatedDeny) {
+                    return AuthorizationResult.ALLOWED;
+                }
+            }
+        }
+
+        return AuthorizationResult.DENIED;
+    }
+
+    private boolean shouldSkipBinding(AclBinding binding, String hostAddr, KafkaPrincipal principal, AclOperation op) {
+        return !binding.entry().host().equals(hostAddr) && !binding.entry().host().equals("*")
+                || !SecurityUtils.parseKafkaPrincipal(binding.entry().principal()).equals(principal)
+                && !binding.entry().principal().equals("User:*")
+                || binding.entry().operation() != op && binding.entry().operation() != AclOperation.ALL;
     }
 }
